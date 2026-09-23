@@ -1,0 +1,13 @@
+name: phonoangiography-dsp
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - pandas
+  - librosa
+  - matplotlib
+  - soundfile
+  - jupyterlab
+  - pip

@@ -35,3 +35,26 @@
   * Exported runtime metadata schema (`models/model_config.json`) embedding feature alignments, sampling parameters, and the empirical operating threshold.
 * **Edge Inference Client (`src/inference/predict.py`):**
   * Built an end-to-end client taking arbitrary `.wav` audio, executing DSP filtering, extracting runtime features, and predicting diagnostic class with acoustic telemetry outputs (spectral centroid, roll-off, Shannon dynamic ratio).
+
+## Milestone: Audio Engine, Containerization, and Diagnostic Calibration
+
+### 1. Acoustic Playback & Audibility
+* **PCM16 Normalization & In-Memory Streaming:** Converted raw, low-amplitude PCG signals into 16-bit PCM WAV byte buffers in memory using `soundfile`, resolving browser audio decoding failures.
+* **Dynamic Digital Gain Boost & Soft Limiting:** Integrated a customizable sidebar gain multiplier (\(0\text{--}24\text{ dB}\)) with hyperbolic tangent (\(\tanh\)) soft clipping to amplify faint low-frequency valve closures and murmurs without digital square-wave distortion.
+
+### 2. Visualization & Boundary Processing
+* **Spectrogram Coordinate Realignment:** Migrated time-frequency plots to a linear frequency scale (\(0\text{--}1200\text{ Hz}\)) to align the overlaid cyan spectral centroid trajectory with the underlying STFT magnitude bins.
+* **Transient Edge Trimming:** Trimmed the initial \(100\text{ ms}\) filter startup impulse to prevent convolution edge artifacts from skewing visual displays and global energy moments.
+
+### 3. Feature Set Expansion & Numerical Stability
+* **Turbulent Murmur Sub-Band Ratio:** Added energy ratio tracking comparing murmur frequencies (\(200\text{--}600\text{ Hz}\)) to fundamental valve closures (\(50\text{--}150\text{ Hz}\)) via Welch power spectral density.
+* **NumPy 2.0+ Compatibility:** Migrated numerical integration from the deprecated `np.trapz` to `scipy.integrate.trapezoid`.
+* **Transient & Noise Floor Descriptors:** Added the 95th-percentile spectral centroid (`spectral_centroid_p95`) and 10th-percentile envelope floor (`shannon_valley_floor`) to preserve brief bruits and quantify ambient sensor noise.
+
+### 4. Ground-Truth Calibration & Diagnostic Validation
+* **PhysioNet Label Realignment:** Aligned training target mappings with the challenge reference standard (`label == 1` \(\rightarrow\) Abnormal/Turbulent, `label == -1` \(\rightarrow\) Normal/Laminar), removing heuristic inversions.
+* **Empirical Threshold Sweeps:** Developed automated evaluation tools (`evaluate_cohort_a.py`, `sweep_thresholds.py`) to systematically analyze sensitivity-specificity trade-offs across 409 cohort recordings.
+
+### 5. Production Containerization
+* **Debian Slim Audio Container:** Built a production `Dockerfile` providing C-level audio codecs (`libsndfile1`, `ffmpeg`), headless Streamlit runtime flags, and integrated health checks.
+* **Docker Compose Orchestration:** Configured read-only host dataset bind-mounts and automated port exposure (`8501:8501`).

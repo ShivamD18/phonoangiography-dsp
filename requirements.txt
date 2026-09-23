@@ -8,3 +8,4 @@ tqdm
 requests
 onnxruntime
 streamlit
+plotly

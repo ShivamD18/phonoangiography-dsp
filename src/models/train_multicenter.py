@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import json
 from pathlib import Path
 
@@ -29,28 +29,22 @@ def load_and_harmonize_datasets():
     for ds_name in DATASETS:
         csv_file = PROCESSED_DIR / f"{ds_name}_features.csv"
         if not csv_file.exists():
-            print(f"Warning: {csv_file.name} not found. Skipping.")
             continue
             
         df = pd.read_csv(csv_file)
         
-        # Ground truth: 1 is Normal (0), -1 is Abnormal (1)
-        y = np.where(df["label"] == -1, 1, 0)
-        
-        # Sanity check: Ensure Abnormal has higher mean centroid
-        cent_norm = df.loc[y == 0, "spectral_centroid_mean"].mean()
-        cent_abnorm = df.loc[y == 1, "spectral_centroid_mean"].mean()
-        if cent_norm > cent_abnorm:
-            y = 1 - y
+        # Exact REFERENCE.csv mapping:
+        # label == 1  -> Abnormal / Turbulent (target = 1)
+        # label == -1 -> Normal / Laminar (target = 0)
+        y = np.where(df["label"] == 1, 1, 0)
             
         df["target"] = y
         df["source_center"] = ds_name
         combined_dfs.append(df)
-        print(f"Loaded {ds_name:<12}: {len(df)} records (Normal: {np.sum(y == 0)}, Abnormal: {np.sum(y == 1)})")
+        print(f"Loaded {ds_name:<12}: {len(df)} records (Normal [0]: {np.sum(y == 0)}, Abnormal [1]: {np.sum(y == 1)})")
         
     full_df = pd.concat(combined_dfs, ignore_index=True)
     
-    # Exclude identifiers and metadata
     drop_cols = ["record_id", "label", "target", "source_center"]
     feature_cols = [c for c in full_df.columns if c not in drop_cols]
     
@@ -62,14 +56,13 @@ def load_and_harmonize_datasets():
 
 def run_multicenter_experiment():
     X, y, groups, feature_cols = load_and_harmonize_datasets()
-    print(f"\nPooled Dataset: {X.shape[0]} total samples across {len(np.unique(groups))} recording hardware setups.")
+    print(f"\nPooled Dataset: {X.shape[0]} total samples across {len(np.unique(groups))} recording cohorts.")
     
-    # 1. Leave-One-Group-Out Validation (Evaluating cross-hardware invariance)
     logo = LeaveOneGroupOut()
     oof_probs = np.zeros(len(y))
     
     print("\n" + "=" * 65)
-    print("  LEAVE-ONE-GROUP-OUT (OUT-OF-HARDWARE) EVALUATION")
+    print("  LEAVE-ONE-GROUP-OUT CROSS-HARDWARE VALIDATION")
     print("=" * 65)
     
     for train_idx, test_idx in logo.split(X, y, groups=groups):
@@ -78,7 +71,7 @@ def run_multicenter_experiment():
         X_test, y_test = X.iloc[test_idx], y[test_idx]
         
         clf = RandomForestClassifier(
-            n_estimators=250, 
+            n_estimators=300, 
             max_depth=6, 
             class_weight="balanced", 
             random_state=42, 
@@ -90,20 +83,18 @@ def run_multicenter_experiment():
         oof_probs[test_idx] = probs
         
         fold_auc = roc_auc_score(y_test, probs)
-        print(f"Held-out Hardware Setup: {held_out_center:<12} | Test ROC-AUC: {fold_auc:.4f}")
+        print(f"Cohort: {held_out_center:<12} | Test ROC-AUC: {fold_auc:.4f}")
         
-    # Aggregate Out-of-Hardware Metrics
     overall_auc = roc_auc_score(y, oof_probs)
     tau_opt, sens_opt, spec_opt, _, _, _ = optimize_clinical_threshold(y, oof_probs, min_specificity=0.80)
     
     print("-" * 65)
     print(f"Overall Multi-Hardware ROC-AUC: {overall_auc:.4f}")
-    print(f"Calibrated Multi-Center Cutoff: {tau_opt:.4f}")
-    print(f"Cross-Hardware Sensitivity:     {sens_opt * 100:.2f}% (Spec >= {spec_opt * 100:.2f}%)")
+    print(f"Calibrated Cutoff (tau):        {tau_opt:.4f}")
+    print(f"Sensitivity:                    {sens_opt * 100:.2f}% (Spec >= {spec_opt * 100:.2f}%)")
     print("=" * 65)
     
-    # 2. Train Final Production Model on all Combined Data
-    print("\nTraining final multi-center model for ONNX export...")
+    print("\nTraining final production Random Forest across all cohorts...")
     rf_final = RandomForestClassifier(
         n_estimators=300, 
         max_depth=7, 
@@ -113,7 +104,6 @@ def run_multicenter_experiment():
     )
     rf_final.fit(X, y)
     
-    # 3. Export to ONNX
     initial_type = [('float_input', FloatTensorType([None, X.shape[1]]))]
     onnx_model = convert_sklearn(
         rf_final, 
@@ -124,9 +114,8 @@ def run_multicenter_experiment():
     
     with open(ONNX_PATH, "wb") as f:
         f.write(onnx_model.SerializeToString())
-    print(f"Updated ONNX model exported to: {ONNX_PATH}")
+    print(f"Exported aligned ONNX model to: {ONNX_PATH}")
     
-    # 4. Save Production Config
     config = {
         "model_file": ONNX_PATH.name,
         "n_features": X.shape[1],
