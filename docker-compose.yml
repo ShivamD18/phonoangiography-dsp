@@ -1,0 +1,17 @@
+﻿version: "3.8"
+
+services:
+  phonoangiography-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: phonoangiography-dsp:latest
+    container_name: phonoangiography_triage
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount data folder as read-only so local benchmark audio files are selectable in the UI
+      - ./data/raw:/app/data/raw:ro
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1

@@ -1,0 +1,14 @@
+﻿.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.ipynb_checkpoints/
+data/raw/*.zip
+data/processed/*.csv
+notebooks/
+docs/
+*.png
+*.log
