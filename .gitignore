@@ -1,0 +1,22 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Raw audio binaries and archives
+data/raw/*
+*.wav
+*.mp3
+*.mat
+*.h5
+*.zip
+!data/raw/.gitkeep
+
+# System artifacts
+Thumbs.db
+desktop.ini
+.DS_Store
