@@ -1,11 +1,10 @@
+﻿streamlit
 numpy
 scipy
-pandas
-librosa
 soundfile
+librosa
 matplotlib
-tqdm
-requests
+scikit-learn
 onnxruntime
-streamlit
-plotly
+tqdm
+pandas
