@@ -10,41 +10,24 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 import matplotlib
 import matplotlib.pyplot as plt
 import librosa
 import librosa.display
 import soundfile as sf
-import plotly 
+import plotly
 import plotly.graph_objects as go
 
 from src.inference.predict import PhonoangiographyPredictor
 from src.dsp.filters import load_and_preprocess_audio, compute_shannon_energy_envelope
 
-from pathlib import Path
-import pandas as pd
-import streamlit as st
+DEMO_DIR = ROOT_DIR / "demo_samples"
+MANIFEST_PATH = DEMO_DIR / "manifest.csv"
 
-DEMO_DIR = Path(__file__).resolve().parent / "demo_samples"
-manifest_path = DEMO_DIR / "manifest.csv"
-
-st.sidebar.header("Audio Input")
-input_method = st.sidebar.radio("Select Input Method:", ["Preloaded Demo Samples", "Upload WAV File"])
-
-audio_path = None
-if input_method == "Preloaded Demo Samples" and manifest_path.exists():
-    df_manifest = pd.read_csv(manifest_path)
-    options = {f"{row['cohort']} - {row['record_id']} ({row['description']})": DEMO_DIR / row['filename'] 
-               for _, row in df_manifest.iterrows()}
-    
-    selected_label = st.sidebar.selectbox("Choose a benchmark recording:", list(options.keys()))
-    audio_path = options[selected_label]
-elif input_method == "Upload WAV File":
-    uploaded_file = st.sidebar.file_uploader("Upload PCG recording (.wav)", type=["wav"])
-    if uploaded_file is not None:
-        audio_path = uploaded_file
-
+# NOTE: st.set_page_config() must be the first Streamlit command executed,
+# so all sidebar/input widgets are defined further below, after this call.
 st.set_page_config(
     page_title="Phonoangiography Acoustic Triage",
     page_icon="🩺",
@@ -224,11 +207,21 @@ with st.sidebar:
                     temp_audio_path = tmp.name
         else:
             sample_options = {}
-            for cohort in ["training-a", "training-b", "training-c"]:
-                p = ROOT_DIR / "data" / "raw" / cohort
-                if p.exists():
-                    for f in sorted(list(p.glob("*.wav")))[:6]:
-                        sample_options[f"{cohort}/{f.name}"] = f
+
+            # Prefer the curated demo_samples/manifest.csv when it exists,
+            # since it carries cohort + human-readable descriptions.
+            if MANIFEST_PATH.exists():
+                df_manifest = pd.read_csv(MANIFEST_PATH)
+                for _, row in df_manifest.iterrows():
+                    label = f"{row['cohort']} - {row['record_id']} ({row['description']})"
+                    sample_options[label] = DEMO_DIR / row["filename"]
+            else:
+                # Fallback: scan the raw training cohorts directly.
+                for cohort in ["training-a", "training-b", "training-c"]:
+                    p = ROOT_DIR / "data" / "raw" / cohort
+                    if p.exists():
+                        for f in sorted(list(p.glob("*.wav")))[:6]:
+                            sample_options[f"{cohort}/{f.name}"] = f
 
             if sample_options:
                 selected_sample_key = st.selectbox("Choose sample recording", list(sample_options.keys()))
@@ -236,7 +229,7 @@ with st.sidebar:
                 file_display_name = selected_file_path.name
                 temp_audio_path = str(selected_file_path)
             else:
-                st.warning("No sample files found in data/raw/. Please upload a .wav file.")
+                st.warning("No sample files found. Please upload a .wav file.")
 
     with st.expander("🔊 Playback Controls", expanded=True):
         gain_db = st.slider(
@@ -282,11 +275,34 @@ if temp_audio_path:
             st.error(f"Error during inference: {e}")
             st.stop()
 
-    is_abnormal = result["is_abnormal"]
     p_abnormal = result["prob_abnormal"]
     p_normal = result["prob_normal"]
     tau = result["operating_threshold"]
     tel = result["telemetry_summary"]
+
+    # -- Adjustable clinical threshold ------------------------------------
+    with st.expander("⚙️ Adjust Clinical Threshold (Advanced)", expanded=False):
+        st.caption(
+            f"Model-calibrated operating threshold: **{tau:.3f}**. "
+            "Lowering the cutoff increases sensitivity (flags more borderline cases as abnormal); "
+            "raising it increases specificity (requires stronger evidence before flagging)."
+        )
+        use_custom_tau = st.checkbox("Use a custom threshold for this session", value=False)
+        if use_custom_tau:
+            effective_tau = st.slider(
+                "Custom P(Abnormal) cutoff",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(tau),
+                step=0.01,
+                help="Recording is classified ABNORMAL when P(Abnormal) is at or above this value.",
+            )
+            if effective_tau != tau:
+                st.caption(f"⚠️ Overriding model default of {tau:.3f} — for exploratory/research use only.")
+        else:
+            effective_tau = tau
+
+    is_abnormal = p_abnormal >= effective_tau
 
     # -- Audio playback --------------------------------------------------
     with st.container(border=True):
@@ -328,11 +344,14 @@ if temp_audio_path:
         st.metric(
             label="Turbulence Probability P(Abnormal)",
             value=f"{p_abnormal * 100:.1f}%",
-            delta=f"{(p_abnormal - tau) * 100:+.1f}% vs cutoff",
+            delta=f"{(p_abnormal - effective_tau) * 100:+.1f}% vs cutoff",
             delta_color="inverse",
         )
         st.progress(min(max(p_abnormal, 0.0), 1.0))
-        st.caption(f"Calibrated clinical cutoff: **{tau:.3f}**  ·  P(Normal): {p_normal * 100:.1f}%")
+        cutoff_note = "custom" if effective_tau != tau else "model default"
+        st.caption(
+            f"Active cutoff: **{effective_tau:.3f}** ({cutoff_note})  ·  P(Normal): {p_normal * 100:.1f}%"
+        )
 
     with s_col:
         kpi_tile("Sampling Rate", f"{sr} Hz")
