@@ -8,3 +8,4 @@ scikit-learn
 onnxruntime
 tqdm
 pandas
+plotly
