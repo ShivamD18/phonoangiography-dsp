@@ -1,0 +1,7 @@
+filename,cohort,record_id,description
+training-a_a0001.wav,training-a,a0001,Normal (Laminar Valve Closures)
+training-a_a0007.wav,training-a,a0007,Abnormal (Turbulent Murmur)
+training-b_b0001.wav,training-b,b0001,Normal (Laminar Baseline)
+training-b_b0006.wav,training-b,b0006,Abnormal (High-Frequency Murmur)
+training-c_c0001.wav,training-c,c0001,Normal (Physiologic Flow)
+training-c_c0005.wav,training-c,c0005,Abnormal (Aortic Stenosis / Murmur)

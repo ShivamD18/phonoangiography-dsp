@@ -16,10 +16,34 @@ import matplotlib.pyplot as plt
 import librosa
 import librosa.display
 import soundfile as sf
+import plotly 
 import plotly.graph_objects as go
 
 from src.inference.predict import PhonoangiographyPredictor
 from src.dsp.filters import load_and_preprocess_audio, compute_shannon_energy_envelope
+
+from pathlib import Path
+import pandas as pd
+import streamlit as st
+
+DEMO_DIR = Path(__file__).resolve().parent / "demo_samples"
+manifest_path = DEMO_DIR / "manifest.csv"
+
+st.sidebar.header("Audio Input")
+input_method = st.sidebar.radio("Select Input Method:", ["Preloaded Demo Samples", "Upload WAV File"])
+
+audio_path = None
+if input_method == "Preloaded Demo Samples" and manifest_path.exists():
+    df_manifest = pd.read_csv(manifest_path)
+    options = {f"{row['cohort']} - {row['record_id']} ({row['description']})": DEMO_DIR / row['filename'] 
+               for _, row in df_manifest.iterrows()}
+    
+    selected_label = st.sidebar.selectbox("Choose a benchmark recording:", list(options.keys()))
+    audio_path = options[selected_label]
+elif input_method == "Upload WAV File":
+    uploaded_file = st.sidebar.file_uploader("Upload PCG recording (.wav)", type=["wav"])
+    if uploaded_file is not None:
+        audio_path = uploaded_file
 
 st.set_page_config(
     page_title="Phonoangiography Acoustic Triage",
