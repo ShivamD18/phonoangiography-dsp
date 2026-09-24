@@ -11,6 +11,7 @@ if str(ROOT_DIR) not in sys.path:
 
 import numpy as np
 import streamlit as st
+import matplotlib
 import matplotlib.pyplot as plt
 import librosa
 import librosa.display
